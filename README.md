@@ -1,20 +1,22 @@
 # LiftFly3D
 
-Tool for transforming 2D keypoints from a single viewpoint to 3D coordinates using deep neural networks.
+LiftFly3D is a tool for transforming 2D keypoints from a single viewpoint to 3D coordinates using deep neural networks.
 
 For the theoretical background and for more details on the following examples have a look at our paper:
 
-paper citation/hyperlink here
+**paper citation/hyperlink here**
 
-Don't forget to cite us if you find our work useful.
+Please cite us if you find our work useful.
 
 The best way to use our code is to adapt one of our examples below to your application.
 
 ## Data format
 
-Currently LiftFly3D works with data supplied as a Python dictionary and saved as a pickle file. Conveniently, this is same format used for DeepFly3D, our pipeline used for multi-camera 3D pose estimation. The dictionary must contain two keys (1) 'points3d': a numpy array of dimension AxBx3 containing the 3D coordinates in a global reference frame, where A is the number of frames, B is the number of keypoints and 3 are the x, y, z coordinates, and (2) 'points2d': a numpy array of dimension CxAxBx2 containing the 2D coordinates in camera centric reference frame, where C is the number of cameras and A, B as before.
+Currently LiftFly3D works with data supplied as a Python dictionary and saved as a pickle file. Conveniently, this is same format used for DeepFly3D, our pipeline used for multi-camera 3D pose estimation. The dictionary must contain two keys:
+ - 'points3d': a numpy array of dimension AxBx3 containing the 3D coordinates in a global reference frame, where A is the number of frames, B is the number of keypoints and 3 are the x, y, z coordinates, and
+ - 'points2d': a numpy array of dimension CxAxBx2 containing the 2D coordinates in camera centric reference frame, where C is the number of cameras and A, B as before.
 
-Refer to ```sample_data.pkl``` for an example.
+Please refer to ```sample_data.pkl``` for an example pickle file.
 
 ## Examples
 
@@ -83,3 +85,11 @@ The rest of the scripts follow the same protocol as in the above example.
 ```1_DLC_to_DF3D_convert.ipynb``` - this converts the DeepLabCut predictions into DeepFly3D format. You must run this before you proceed with the pipeline. 
 
 The rest of the scripts follow the same protocol as in the above example. When training, use the option ```--noise std```, to add a Gaussian noise with standard deviation std during training. Adding this option is essential to coarse-grain our network to work with data that has lower resolution than the training dataset. As a rule of thumb, std should be equal to the ratio between the high and low resolution datasets. For example, our training data is at 114 px/mm and out test data is at 24 px/mm to std should be at least 4.75.
+
+
+## Dependencies
+- Pytorch
+- Numpy
+- Matplotlib
+- tqdm
+- Networkx 
