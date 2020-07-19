@@ -93,3 +93,4 @@ The rest of the scripts follow the same protocol as in the above example. When t
 - Matplotlib
 - tqdm
 - Networkx 
+- OpenCV

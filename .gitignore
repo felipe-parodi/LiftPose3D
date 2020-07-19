@@ -22,3 +22,6 @@ DeepCut_resnet101*_
 *.tar.*
 *.mp4
 *.json
+flylimbtracker/data/frames/
+*.svg
+*.jpg
