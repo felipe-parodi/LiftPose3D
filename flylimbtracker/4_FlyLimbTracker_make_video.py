@@ -109,12 +109,16 @@ with writer.saving(fig, "prediction_cams.mp4", 100):
         pts = np.array([1,1])
         p3, = ax.plot(pts, pts, pts, 'r--', dashes=(2, 2))
         p4, = ax.plot(pts, pts, pts, 'b--', dashes=(2, 2))
-        ax.legend([(p3, p4)], 
-            ['LiftFly3D prediction'], 
+        p5, = ax.plot(pts,pts,pts, 'black', label='flylimbtracker')
+        ax.legend([(p3, p4), p5], 
+            ['LiftFly3D prediction', "FlyLimbTracker"], 
             numpoints=1, handler_map={tuple: HandlerTuple(ndivide=None)},
             loc=(0.1,0.9))    
         p3.remove()
         p4.remove()
+        p5.remove()
+        
+
         ####
             
         ax.set_xlim(xlim)
