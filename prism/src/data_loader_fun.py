@@ -14,7 +14,6 @@ class data_loader(Dataset):
         self.noise = noise
 
         self.train_inp, self.train_out, self.test_inp, self.test_out = [], [], [], []
-        self.train_LR, self.test_LR = [], []
         self.test_keys, self.train_keys = [], []
 
         if self.is_train: # load training data
@@ -28,13 +27,6 @@ class data_loader(Dataset):
                     self.train_inp.append(self.train_2d[key][i])
                     self.train_out.append(self.train_3d[key][i])
                     self.train_keys.append(key)
-                    mask = np.ones(num_d, dtype=bool)
-                    if self.train_bool_LR[key][i]:
-                        mask[:num_d//2] = 0
-                    else:
-                        mask[num_d//2:] = 0
-                        
-                    self.train_LR.append(mask)  
                     
         else:# load test data
             self.test_3d, self.test_bool_LR = torch.load(os.path.join(data_path, 'test_3d.pth.tar'))
@@ -46,13 +38,6 @@ class data_loader(Dataset):
                     self.test_inp.append(self.test_2d[key][i])
                     self.test_out.append(self.test_3d[key][i])
                     self.test_keys.append(key)
-                    mask = np.ones(num_d, dtype=bool)
-                    if self.test_bool_LR[key][i]:
-                        mask[:num_d//2] = 0
-                    else:
-                        mask[num_d//2:] = 0
-                        
-                    self.test_LR.append(mask)
         
         
     def __getitem__(self, index):
@@ -62,16 +47,14 @@ class data_loader(Dataset):
                 std = self.train_stat['std'][self.train_stat['targets_2d']]
                 inputs += torch.from_numpy(np.random.normal(0, self.noise/std, size=inputs.shape)).float()
             outputs = torch.from_numpy(self.train_out[index]).float()
-            bool_LR = torch.from_numpy(self.train_LR[index])
             keys = self.train_keys[index]
             
         else:
             inputs = torch.from_numpy(self.test_inp[index]).float()
             outputs = torch.from_numpy(self.test_out[index]).float()
-            bool_LR = torch.from_numpy(self.test_LR[index])
             keys = self.test_keys[index]
 
-        return inputs, outputs, bool_LR, keys
+        return inputs, outputs, keys
 
 
     def __len__(self):

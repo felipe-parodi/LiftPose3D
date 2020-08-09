@@ -20,6 +20,7 @@ def normalization_stats(train_set):
     complete_data = copy.deepcopy(np.vstack(train_set.values()))
     data_mean = np.mean(complete_data, axis=0)
     data_std = np.std(complete_data, axis=0)
+    data_std[data_std==0] = 1
 
     return data_mean, data_std
 
