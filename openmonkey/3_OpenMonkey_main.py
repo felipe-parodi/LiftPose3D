@@ -17,6 +17,7 @@ from src.opt import Options
 import src.log as log
 from src.model import LinearModel, weight_init, SemGCN
 from src.data_loader_fun import data_loader
+from src.graph_utils import *
 
 
 def main(opt):
@@ -29,8 +30,21 @@ def main(opt):
     log.save_options(opt, opt.out_dir)
 
     # create and initialise model
-    #model = LinearModel(input_size=26, output_size=39, linear_size=opt.linear_size, num_stage=opt.num_stage, p_dropout=opt.dropout) # hard-coded!
-    model = SemGCN()
+    # parents = [1, 2, 7, 7, 5, 7, 5, -1, 8, 7, 7, 10, 7]
+    # assert len(parents) == 13
+    # adj = adj_mx_from_skeleton(13, parents)
+
+    model = LinearModel(
+        input_size=26,
+        output_size=39,
+        linear_size=opt.linear_size,
+        num_stage=opt.num_stage,
+        p_dropout=opt.dropout,
+    )
+    # groups = [[2, 3], [5, 6], [1, 4], [0, 7], [8, 9], [14, 15], [11, 12], [10, 13]]
+    # model = SemGCN(adj, 128, num_layers=4, p_dropout=0.0, nodes_group=None)
+
+    # model = SemGCN()
     model = model.cuda()
     model.apply(weight_init)
     criterion = nn.MSELoss(size_average=True).cuda()
@@ -95,8 +109,8 @@ def main(opt):
             },
             open(os.path.join(opt.out_dir, "test_results.pth.tar"), "wb"),
         )
-        
-        #print("train {:.4f}".format(err_train), end="\t")
+
+        # print("train {:.4f}".format(err_train), end="\t")
         print("test {:.4f}".format(err_test), end="\t")
         sys.exit()
 
@@ -142,12 +156,10 @@ def main(opt):
             train_loader, model, criterion, stat_3d
         )
 
-
         # test
         loss_test, err_test, _, _, _, _, _ = test(
             test_loader, model, criterion, stat_3d
         )
-
 
         # update log file
         logger.append(
@@ -175,5 +187,11 @@ def main(opt):
 
 
 if __name__ == "__main__":
+    import numpy as np
+
+    np.random.seed(0)
+    import torch
+
+    torch.manual_seed(0)
     option = Options().parse()
     main(option)

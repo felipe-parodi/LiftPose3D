@@ -71,12 +71,12 @@ out, tar = [], []
 data = {}
 offset = None
 for cam in cameras:
-    data_dir = root_dir 
+    data_dir = root_dir
 
     # load stats
     tar_mean = torch.load(data_dir + "/stat_3d.pth.tar")["mean"]
     tar_std = torch.load(data_dir + "/stat_3d.pth.tar")["std"]
-    #targets_3d = torch.load(data_dir + "/stat_3d.pth.tar")["targets_3d"]
+    # targets_3d = torch.load(data_dir + "/stat_3d.pth.tar")["targets_3d"]
 
     # load predictions
     data = torch.load(data_dir + "/test_results.pth.tar")
@@ -88,11 +88,11 @@ for cam in cameras:
     out_ = utils.unNormalizeData(out_, tar_mean, tar_std)
 
     # transform back to world
-    tar_ = utils.camera_to_world(tar_, cam_par["9a"], 1)
-    out_ = utils.camera_to_world(out_, cam_par["9a"], 1)
+    tar_ = utils.camera_to_world(tar_, cam_par["9"], 1)
+    out_ = utils.camera_to_world(out_, cam_par["9"], 1)
 
     # procrustes
-    '''
+    """
     gt = np.reshape(tar_, [-1, 3])
     out_linear = np.reshape(out_, [-1, 3])
     _, Z, T, b, c = compute_similarity_transform(
@@ -100,7 +100,7 @@ for cam in cameras:
     )
     out_ = (b * out_linear.dot(T)) + c
     out_ = np.reshape(out_, [tar_.shape[0], 39])
-    '''
+    """
     out.append(out_)
     tar.append(tar_)
 
@@ -110,6 +110,9 @@ for cam in cameras:
 
 tar = np.squeeze(np.array(tar))
 out = np.squeeze(np.array(out))
+
+
+indices_min = np.argsort(np.linalg.norm(tar - out, axis=1))
 
 # tar += joint_locations
 # out += joint_locations
@@ -124,7 +127,7 @@ metadata = dict(title="LiftFly3D prediction", artist="Nely", comment="Watch this
 writer = FFMpegWriter(fps=1, metadata=metadata)
 xlim, ylim, zlim = None, None, None
 with writer.saving(fig, "prediction_cams.mp4", 100):
-    for t in tqdm(range(10)):
+    for t in np.random.choice(np.arange(tar.shape[0]), 100):#tqdm(indices_min[:10]):#: #indices_min: #tqdm(range(10)):
         pos_pred, pos_tar = [], []
 
         ax.cla()
@@ -132,6 +135,15 @@ with writer.saving(fig, "prediction_cams.mp4", 100):
         for j in range(tar.shape[1] // 3):
             pos_tar.append((tar[t, 3 * j], tar[t, 3 * j + 1], tar[t, 3 * j + 2]))
             pos_pred.append((out[t, 3 * j], out[t, 3 * j + 1], out[t, 3 * j + 2]))
+
+        #pos_tar = np.array(pos_tar)
+        #pos_pred = np.array(pos_pred)
+
+        #pos_tar -= pos_tar[[7]]
+        #pos_pred -= pos_pred[[7]]
+
+        #print(pos_tar, pos_pred)
+
 
         ax = plot_3d_graph(pos_tar, ax, color_edge=color_edge)
         ax = plot_3d_graph(pos_pred, ax, color_edge=color_edge, style="--")
@@ -158,6 +170,7 @@ with writer.saving(fig, "prediction_cams.mp4", 100):
         p2.remove()
         p3.remove()
         p4.remove()
+       
         ####
 
         # ax.set_xlim(xlim)

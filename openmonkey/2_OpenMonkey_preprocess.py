@@ -113,13 +113,16 @@ def read_2d_predictions(actions, data_dir, rcams, target_sets, ref_points):
     # Standardize each dimension independently
     train_set = utils.normalize_data(train_set, data_mean, data_std)
     test_set = utils.normalize_data(test_set, data_mean, data_std)
-
+    
+    
     for k in list(train_set.keys()):
-        train_set[k] = train_set[k] / np.linalg.norm(train_set[k], axis=1, keepdims=True)
+        train_set[k] = train_set[k] / np.linalg.norm(
+            train_set[k], axis=1, keepdims=True
+        )
 
     for k in list(test_set.keys()):
         test_set[k] = test_set[k] / np.linalg.norm(test_set[k], axis=1, keepdims=True)
-
+    
 
     # select coordinates to be predicted and return them as 'targets_2d'
     # train_set, _ = utils.collapse(train_set, target_sets, dim)

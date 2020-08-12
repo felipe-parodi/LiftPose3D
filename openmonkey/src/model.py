@@ -43,20 +43,22 @@ class Linear(nn.Module):
 
 
 class LinearModel(nn.Module):
-    
-    #define the components of the network
-    def __init__(self,
-                 linear_size=1024,
-                 num_stage=2,
-                 p_dropout=0.5,
-                 input_size=24,
-                 output_size=12):
+
+    # define the components of the network
+    def __init__(
+        self,
+        linear_size=1024,
+        num_stage=2,
+        p_dropout=0.5,
+        input_size=24,
+        output_size=12,
+    ):
         super(LinearModel, self).__init__()
 
         self.linear_size = linear_size
         self.p_dropout = p_dropout
         self.num_stage = num_stage
-        self.input_size =  input_size
+        self.input_size = input_size
         self.output_size = output_size
 
         # process input to linear size
@@ -93,7 +95,150 @@ class LinearModel(nn.Module):
         return y
 
 
-from __future__ import absolute_import, division
+import torch
+from torch import nn
+
+
+class _NonLocalBlock(nn.Module):
+    def __init__(
+        self, in_channels, inter_channels=None, dimension=3, sub_sample=1, bn_layer=True
+    ):
+        super(_NonLocalBlock, self).__init__()
+
+        assert dimension in [1, 2, 3]
+
+        self.dimension = dimension
+        self.sub_sample = sub_sample
+
+        self.in_channels = in_channels
+        self.inter_channels = inter_channels
+
+        if self.inter_channels is None:
+            self.inter_channels = in_channels // 2
+
+        assert self.inter_channels > 0
+
+        if dimension == 3:
+            conv_nd = nn.Conv3d
+            max_pool = nn.MaxPool3d
+            bn = nn.BatchNorm3d
+        elif dimension == 2:
+            conv_nd = nn.Conv2d
+            max_pool = nn.MaxPool2d
+            bn = nn.BatchNorm2d
+        elif dimension == 1:
+            conv_nd = nn.Conv1d
+            max_pool = nn.MaxPool1d
+            bn = nn.BatchNorm1d
+        else:
+            raise Exception("Error feature dimension.")
+
+        self.g = conv_nd(
+            in_channels=self.in_channels,
+            out_channels=self.inter_channels,
+            kernel_size=1,
+            stride=1,
+            padding=0,
+        )
+        self.theta = conv_nd(
+            in_channels=self.in_channels,
+            out_channels=self.inter_channels,
+            kernel_size=1,
+            stride=1,
+            padding=0,
+        )
+        self.phi = conv_nd(
+            in_channels=self.in_channels,
+            out_channels=self.inter_channels,
+            kernel_size=1,
+            stride=1,
+            padding=0,
+        )
+
+        self.concat_project = nn.Sequential(
+            nn.Conv2d(self.inter_channels * 2, 1, 1, 1, 0, bias=False), nn.ReLU()
+        )
+
+        nn.init.kaiming_normal_(self.concat_project[0].weight)
+        nn.init.kaiming_normal_(self.g.weight)
+        nn.init.constant_(self.g.bias, 0)
+        nn.init.kaiming_normal_(self.theta.weight)
+        nn.init.constant_(self.theta.bias, 0)
+        nn.init.kaiming_normal_(self.phi.weight)
+        nn.init.constant_(self.phi.bias, 0)
+
+        if bn_layer:
+            self.W = nn.Sequential(
+                conv_nd(
+                    in_channels=self.inter_channels,
+                    out_channels=self.in_channels,
+                    kernel_size=1,
+                    stride=1,
+                    padding=0,
+                ),
+                bn(self.in_channels),
+            )
+            nn.init.kaiming_normal_(self.W[0].weight)
+            nn.init.constant_(self.W[0].bias, 0)
+            nn.init.constant_(self.W[1].weight, 0)
+            nn.init.constant_(self.W[1].bias, 0)
+        else:
+            self.W = conv_nd(
+                in_channels=self.inter_channels,
+                out_channels=self.in_channels,
+                kernel_size=1,
+                stride=1,
+                padding=0,
+            )
+            nn.init.constant_(self.W.weight, 0)
+            nn.init.constant_(self.W.bias, 0)
+
+        if sub_sample > 1:
+            self.g = nn.Sequential(self.g, max_pool(kernel_size=sub_sample))
+            self.phi = nn.Sequential(self.phi, max_pool(kernel_size=sub_sample))
+
+    def forward(self, x):
+        batch_size = x.size(0)  # x: (b, c, t, h, w)
+
+        g_x = self.g(x).view(batch_size, self.inter_channels, -1)
+        g_x = g_x.permute(0, 2, 1)
+
+        # (b, c, N, 1)
+        theta_x = self.theta(x).view(batch_size, self.inter_channels, -1, 1)
+        # (b, c, 1, N)
+        phi_x = self.phi(x).view(batch_size, self.inter_channels, 1, -1)
+
+        h = theta_x.size(2)
+        w = phi_x.size(3)
+        theta_x = theta_x.expand(-1, -1, -1, w)
+        phi_x = phi_x.expand(-1, -1, h, -1)
+
+        concat_feature = torch.cat([theta_x, phi_x], dim=1)
+        f = self.concat_project(concat_feature)
+        b, _, h, w = f.size()
+        f = f.view(b, h, w)
+
+        N = f.size(-1)
+        f_div_C = f / N
+
+        y = torch.matmul(f_div_C, g_x)
+        y = y.permute(0, 2, 1).contiguous()
+        y = y.view(batch_size, self.inter_channels, *x.size()[2:])
+        W_y = self.W(y)
+        z = W_y + x
+
+        return z
+
+
+class GraphNonLocal(_NonLocalBlock):
+    def __init__(self, in_channels, inter_channels=None, sub_sample=1, bn_layer=True):
+        super(GraphNonLocal, self).__init__(
+            in_channels,
+            inter_channels=inter_channels,
+            dimension=1,
+            sub_sample=sub_sample,
+            bn_layer=bn_layer,
+        )
 
 import math
 import torch
@@ -111,24 +256,32 @@ class SemCHGraphConv(nn.Module):
         self.in_features = in_features
         self.out_features = out_features
 
-        self.W = nn.Parameter(torch.zeros(size=(2, in_features, out_features), dtype=torch.float))
+        self.W = nn.Parameter(
+            torch.zeros(size=(2, in_features, out_features), dtype=torch.float)
+        )
         nn.init.xavier_uniform_(self.W.data, gain=1.414)
 
         self.adj = adj.unsqueeze(0).repeat(out_features, 1, 1)
-        self.m = (self.adj > 0)
-        self.e = nn.Parameter(torch.zeros(out_features, len(self.m[0].nonzero()), dtype=torch.float))
+        self.m = self.adj > 0
+        self.e = nn.Parameter(
+            torch.zeros(out_features, len(self.m[0].nonzero()), dtype=torch.float)
+        )
         nn.init.constant_(self.e.data, 1)
 
         if bias:
             self.bias = nn.Parameter(torch.zeros(out_features, dtype=torch.float))
-            stdv = 1. / math.sqrt(self.W.size(1))
+            stdv = 1.0 / math.sqrt(self.W.size(1))
             self.bias.data.uniform_(-stdv, stdv)
         else:
-            self.register_parameter('bias', None)
+            self.register_parameter("bias", None)
 
     def forward(self, input):
-        h0 = torch.matmul(input, self.W[0]).unsqueeze(1).transpose(1, 3)  # B * C * J * 1
-        h1 = torch.matmul(input, self.W[1]).unsqueeze(1).transpose(1, 3)  # B * C * J * 1
+        h0 = (
+            torch.matmul(input, self.W[0]).unsqueeze(1).transpose(1, 3)
+        )  # B * C * J * 1
+        h1 = (
+            torch.matmul(input, self.W[1]).unsqueeze(1).transpose(1, 3)
+        )  # B * C * J * 1
 
         adj = -9e15 * torch.ones_like(self.adj).to(input.device)  # C * J * J
         adj[self.m] = self.e.view(-1)
@@ -145,10 +298,15 @@ class SemCHGraphConv(nn.Module):
             return output
 
     def __repr__(self):
-        return self.__class__.__name__ + ' (' + str(self.in_features) + ' -> ' + str(self.out_features) + ')'
+        return (
+            self.__class__.__name__
+            + " ("
+            + str(self.in_features)
+            + " -> "
+            + str(self.out_features)
+            + ")"
+        )
 
-
-from __future__ import absolute_import, division
 
 import math
 import torch
@@ -166,20 +324,22 @@ class SemGraphConv(nn.Module):
         self.in_features = in_features
         self.out_features = out_features
 
-        self.W = nn.Parameter(torch.zeros(size=(2, in_features, out_features), dtype=torch.float))
+        self.W = nn.Parameter(
+            torch.zeros(size=(2, in_features, out_features), dtype=torch.float)
+        )
         nn.init.xavier_uniform_(self.W.data, gain=1.414)
 
         self.adj = adj
-        self.m = (self.adj > 0)
+        self.m = self.adj > 0
         self.e = nn.Parameter(torch.zeros(1, len(self.m.nonzero()), dtype=torch.float))
         nn.init.constant_(self.e.data, 1)
 
         if bias:
             self.bias = nn.Parameter(torch.zeros(out_features, dtype=torch.float))
-            stdv = 1. / math.sqrt(self.W.size(2))
+            stdv = 1.0 / math.sqrt(self.W.size(2))
             self.bias.data.uniform_(-stdv, stdv)
         else:
-            self.register_parameter('bias', None)
+            self.register_parameter("bias", None)
 
     def forward(self, input):
         h0 = torch.matmul(input, self.W[0])
@@ -198,23 +358,17 @@ class SemGraphConv(nn.Module):
             return output
 
     def __repr__(self):
-        return self.__class__.__name__ + ' (' + str(self.in_features) + ' -> ' + str(self.out_features) + ')'
+        return (
+            self.__class__.__name__
+            + " ("
+            + str(self.in_features)
+            + " -> "
+            + str(self.out_features)
+            + ")"
+        )
 
-
-
-
-
-
-
-
-
-
-
-from __future__ import absolute_import
 
 import torch.nn as nn
-from models.sem_graph_conv import SemGraphConv
-from models.graph_non_local import GraphNonLocal
 
 
 class _GraphConv(nn.Module):
@@ -258,19 +412,28 @@ class _GraphNonLocal(nn.Module):
     def __init__(self, hid_dim, grouped_order, restored_order, group_size):
         super(_GraphNonLocal, self).__init__()
 
-        self.nonlocal = GraphNonLocal(hid_dim, sub_sample=group_size)
+        self.nonlocal_ = GraphNonLocal(hid_dim, sub_sample=group_size)
         self.grouped_order = grouped_order
         self.restored_order = restored_order
 
     def forward(self, x):
         out = x[:, self.grouped_order, :]
-        out = self.nonlocal(out.transpose(1, 2)).transpose(1, 2)
+        out = self.nonlocal_(out.transpose(1, 2)).transpose(1, 2)
         out = out[:, self.restored_order, :]
         return out
 
+from functools import reduce
 
 class SemGCN(nn.Module):
-    def __init__(self, adj, hid_dim, coords_dim=(2, 3), num_layers=4, nodes_group=None, p_dropout=None):
+    def __init__(
+        self,
+        adj,
+        hid_dim,
+        coords_dim=(2, 3),
+        num_layers=4,
+        nodes_group=None,
+        p_dropout=None,
+    ):
         super(SemGCN, self).__init__()
 
         _gconv_input = [_GraphConv(adj, coords_dim[0], hid_dim, p_dropout=p_dropout)]
@@ -278,7 +441,9 @@ class SemGCN(nn.Module):
 
         if nodes_group is None:
             for i in range(num_layers):
-                _gconv_layers.append(_ResGraphConv(adj, hid_dim, hid_dim, hid_dim, p_dropout=p_dropout))
+                _gconv_layers.append(
+                    _ResGraphConv(adj, hid_dim, hid_dim, hid_dim, p_dropout=p_dropout)
+                )
         else:
             group_size = len(nodes_group[0])
             assert group_size > 1
@@ -291,10 +456,16 @@ class SemGCN(nn.Module):
                         restored_order[i] = j
                         break
 
-            _gconv_input.append(_GraphNonLocal(hid_dim, grouped_order, restored_order, group_size))
+            _gconv_input.append(
+                _GraphNonLocal(hid_dim, grouped_order, restored_order, group_size)
+            )
             for i in range(num_layers):
-                _gconv_layers.append(_ResGraphConv(adj, hid_dim, hid_dim, hid_dim, p_dropout=p_dropout))
-                _gconv_layers.append(_GraphNonLocal(hid_dim, grouped_order, restored_order, group_size))
+                _gconv_layers.append(
+                    _ResGraphConv(adj, hid_dim, hid_dim, hid_dim, p_dropout=p_dropout)
+                )
+                _gconv_layers.append(
+                    _GraphNonLocal(hid_dim, grouped_order, restored_order, group_size)
+                )
 
         self.gconv_input = nn.Sequential(*_gconv_input)
         self.gconv_layers = nn.Sequential(*_gconv_layers)

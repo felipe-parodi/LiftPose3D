@@ -69,8 +69,8 @@ class Options:
         self.parser.add_argument(
             "--dropout",
             type=float,
-            default=0.5,
-            help="dropout probability, 1.0 to make no dropout",
+            default=0.0,
+            help="dropout probability, 0.0 to make no dropout",
         )
         self.parser.add_argument("--batch_size", type=int, default=64)
         self.parser.add_argument(
