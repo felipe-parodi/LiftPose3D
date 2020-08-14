@@ -127,7 +127,7 @@ metadata = dict(title="LiftFly3D prediction", artist="Nely", comment="Watch this
 writer = FFMpegWriter(fps=1, metadata=metadata)
 xlim, ylim, zlim = None, None, None
 with writer.saving(fig, "prediction_cams.mp4", 100):
-    for t in np.random.choice(np.arange(tar.shape[0]), 100):#tqdm(indices_min[:10]):#: #indices_min: #tqdm(range(10)):
+    for t in indices_min[:10]: #np.random.choice(np.arange(tar.shape[0]), 100):#tqdm(indices_min[:10]):#: #indices_min: #tqdm(range(10)):
         pos_pred, pos_tar = [], []
 
         ax.cla()
