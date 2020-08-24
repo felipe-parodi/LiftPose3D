@@ -126,3 +126,28 @@ def display_plot(I):
         sub1.imshow(I[i])
 
     fig.tight_layout()
+    
+    
+def normalize_bone_length(pose3d, edges, bone_length, parents, leaves):
+    pose3d_normalized = pose3d.copy()
+    for leaf in leaves:
+        curr = leaf
+        parent = parents[curr]
+        history = list()
+        while parent != -1:
+            try:
+                idx = edges.index((curr, parent))
+            except:
+                idx = edges.index((parent, curr))
+            vec = pose3d_normalized[curr] - pose3d_normalized[parent]
+            curr_length = np.linalg.norm(vec)
+            offset = (vec / curr_length) * (bone_length[idx] - curr_length)
+
+            history.append((curr, parent))        
+            for c, p in history:
+                pose3d_normalized[c] += offset
+
+            curr = parent
+            parent = parents[curr]
+        
+    return pose3d_normalized

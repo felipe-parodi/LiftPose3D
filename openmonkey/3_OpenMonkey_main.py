@@ -189,9 +189,9 @@ def main(opt):
 if __name__ == "__main__":
     import numpy as np
 
-    np.random.seed(0)
+    # np.random.seed(0)
     import torch
 
-    torch.manual_seed(0)
+    # torch.manual_seed(0)
     option = Options().parse()
     main(option)
